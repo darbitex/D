@@ -1,0 +1,15 @@
+[package]
+name = "D"
+version = "0.2.0"
+upgrade_policy = "compatible"
+# Sealing achieved via resource-account deploy + destroyed SignerCapability
+# (separate destroy_cap tx after publish + bootstrap). Move.toml-level "immutable"
+# is blocked by dep policy chain (SupraFramework + dora-interface are compatible).
+
+[addresses]
+D = "_"
+origin = "_"
+
+[dependencies]
+SupraFramework = { git = "https://github.com/Entropy-Foundation/aptos-core.git", subdir = "aptos-move/framework/supra-framework", rev = "306b60776be2ba382e35e327a7812233ae7acb13" }
+core = { git = "https://github.com/Entropy-Foundation/dora-interface.git", subdir = "supra/mainnet/core", rev = "37a9d80bd076a5f4d81163952068bb4e27518d5b" }

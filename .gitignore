@@ -2,6 +2,8 @@
 .env
 .env.*
 *.env
+!.env.example
+!**/.env.example
 .sui_keystore
 sui_config/
 *.key
@@ -30,6 +32,13 @@ Thumbs.db
 
 # Deploy artifacts intermediate (Published.toml + publish-output.json kept; raw stripped)
 **/deploy-scripts/publish-raw.json
+
+# Generated test wallets — contain ed25519 private keys
+**/deploy-scripts/wallets.json
+**/wallets.json
+
+# Compiled Move bytecode (regenerable via `aptos move compile-script`)
+**/scripts_bytecode/
 
 # Backup deps with mainnet/testnet suffix (only for active toml)
 **/Move.toml.mainnet
