@@ -1,8 +1,21 @@
-# D — immutable stablecoin on Sui
+# D — immutable stablecoin (Sui + Aptos)
 
-D is a sealed, governance-free, retail-first CDP stablecoin contract on Sui mainnet, backed by SUI collateral and priced via the Pyth SUI/USD oracle. Architecture: Liquity V1 + agnostic donation primitive.
+D is a sealed, governance-free, retail-first CDP stablecoin contract. Architecture: Liquity V1 + agnostic donation primitive (V2 design). Same code semantics on both chains; different sealing model + dialect.
 
-**LIVE + SEALED on Sui mainnet (2026-04-28).**
+**LIVE + SEALED on both chains:**
+
+| Chain | Package | Sealed | Date |
+|---|---|---|---|
+| Sui | [`0x898d83f0…8910b0d7`](https://suiscan.xyz/mainnet/object/0x898d83f0e128eb2024e435bc9da116d78f47c631e74096e505f5c86f8910b0d7) | `package::make_immutable` | 2026-04-28 |
+| Aptos | [`0x587c8084…48622c77`](https://explorer.aptoslabs.com/account/0x587c80846b18b7d7c3801fe11e88ca114305a5153082b51d0d2547ad48622c77?network=mainnet) | resource-account + `destroy_cap` (3-of-5 multisig governs the empty multisig shell) | 2026-04-29 |
+
+See chain-specific READMEs for full address inventory + audit history:
+- **Sui**: details below in this file.
+- **Aptos**: [`aptos/README.md`](./aptos/README.md) — multisig + 5 store addresses + tx trail + audit ledger.
+
+---
+
+## D on Sui
 
 | Object | ID |
 |---|---|

@@ -1,0 +1,16 @@
+[package]
+name = "D"
+version = "0.2.0"
+upgrade_policy = "compatible"
+# Immutability achieved via resource-account deploy + destroyed SignerCapability
+# (separate destroy_cap tx after publish). Package upgrade_policy stays "compatible"
+# because deps are compatible.
+
+[addresses]
+D = "_"
+origin = "0x37f781195eb0929e5187ebe95dba5d9ac22859187a0ddca3e5afbc815688b826"
+pyth = "0x7e783b349d3e89cf5931af376ebeadbfab855b3fa239b7ada8f5a92fbea6b387"
+
+[dependencies]
+AptosFramework = { git = "https://github.com/aptos-labs/aptos-core.git", subdir = "aptos-move/framework/aptos-framework", rev = "e0f33de9783f2ceaa30e5f2b004d3b39812c4f06" }
+Pyth = { local = "deps/pyth" }
