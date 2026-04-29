@@ -57,18 +57,67 @@ Same 5 owners as Darbitex Final / Darbitex Treasury multisig:
 | 10. Propose threshold 3/5 | seq 627 | trivial |
 | 11. Execute threshold 3/5 | seq 629 | trivial |
 
-## Verify the seal yourself
+## Immutability model — dual layer (important)
+
+Aptos enforces a transitive dep policy rule (per [aptos-labs/aptos-core](https://github.com/aptos-labs/aptos-core)): a package's `upgrade_policy` must be **at least as permissive as** its weakest dependency's policy. AptosFramework is published with `compatible` policy (so the framework can evolve). D depends on AptosFramework, so D's `Move.toml` declares:
+
+```toml
+[package]
+upgrade_policy = "compatible"
+```
+
+**This does NOT mean D is upgradeable.** It just means we can't seal it at the *package layer*. We seal at the *account layer* instead.
+
+D uses **two layers** of immutability:
+
+### Layer 1: Package upgrade_policy
+
+- Value: `"compatible"` (forced by AptosFramework dep)
+- Meaning: if anyone could construct a signer for `@D` and call `0x1::code::publish_package_txn`, they'd be allowed to upload bytecode that's signature-compatible with the existing modules.
+- **Status: NOT the binding constraint.**
+
+### Layer 2: Account signer (the binding lock)
+
+`@D = 0x587c8084…` is a **resource account**, not a regular account. Resource accounts are unique because their `SignerCapability` is the ONLY way to derive a signer for them — there's no private key, no key rotation, no multisig owner of the account itself.
+
+The deploy flow:
+1. Multisig `0x37f78119…` calls `0x1::resource_account::create_resource_account_and_publish_package(seed="D", metadata, code)`.
+2. Aptos framework derives `@D` from `(multisig_addr, seed)`, creates a `SignerCapability` for it, and stashes it in a `Container` resource at the multisig's address.
+3. D's `init_module` retrieves the cap from `Container` and stashes it inside D's own `ResourceCap` resource at `@D`.
+4. D's `destroy_cap` (origin-only, callable only by the multisig) extracts the cap from `ResourceCap`, lets `option::destroy_some` drop it, and deletes the `ResourceCap` resource.
+
+After step 4 (executed in tx [`seq 625`](https://explorer.aptoslabs.com/account/0x37f781195eb0929e5187ebe95dba5d9ac22859187a0ddca3e5afbc815688b826?network=mainnet)):
+- `ResourceCap` no longer exists at `@D`.
+- The `Container` at `@multisig` no longer holds D's cap (it was moved out at init).
+- No actor — not the multisig, not Aptos governance, not anyone — can derive a signer for `@D`.
+- Therefore no actor can call `0x1::code::publish_package_txn` with `@D` as the publish target. No upgrade is possible *in practice*, regardless of `upgrade_policy`.
+
+This is the **same end result as Sui's `package::make_immutable`** (which consumes the UpgradeCap), just via a different mechanism. Sui has a single-layer model (UpgradeCap), Aptos has the dual-layer model (package policy + account signer).
+
+### Verify both layers yourself
 
 ```bash
-# 1. is_sealed view → must return true
+# Layer 1: package policy is "compatible" (expected — dep chain constraint)
+curl -s https://fullnode.mainnet.aptoslabs.com/v1/accounts/0x587c80846b18b7d7c3801fe11e88ca114305a5153082b51d0d2547ad48622c77/resource/0x1::code::PackageRegistry \
+  | python3 -c "import json,sys; d=json.load(sys.stdin); print('policy:', d['data']['packages'][0]['upgrade_policy'])"
+# Expected: policy: {'policy': 1}   # 1 = compatible
+
+# Layer 2a: D's is_sealed view → must return true
 aptos move view --function-id 0x587c80846b18b7d7c3801fe11e88ca114305a5153082b51d0d2547ad48622c77::D::is_sealed --profile mainnet
+# Result: [true]
 
-# 2. ResourceCap resource → must 404
+# Layer 2b: ResourceCap resource → must 404 (cap is gone)
 curl https://fullnode.mainnet.aptoslabs.com/v1/accounts/0x587c80846b18b7d7c3801fe11e88ca114305a5153082b51d0d2547ad48622c77/resource/0x587c80846b18b7d7c3801fe11e88ca114305a5153082b51d0d2547ad48622c77::D::ResourceCap
+# Expected: 404 "Resource not found"
 
-# 3. SignerCapability for the resource account is permanently consumed.
-# No actor (including the multisig) can publish to @D ever again.
+# Layer 2c: Container resource at multisig — must NOT contain D's cap
+# (Container holds caps for resource accounts the multisig spawned. D's was
+#  moved out during init_module and then dropped during destroy_cap.)
+curl https://fullnode.mainnet.aptoslabs.com/v1/accounts/0x37f781195eb0929e5187ebe95dba5d9ac22859187a0ddca3e5afbc815688b826/resource/0x1::resource_account::Container
+# Expected: either 404, or store map without an entry keyed by @D
 ```
+
+If all four checks pass, the package is permanently sealed. The `compatible` policy in Layer 1 is functionally inert because Layer 2 blocks any signer that could exercise it.
 
 ## Protocol parameters
 
