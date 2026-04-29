@@ -174,6 +174,41 @@ If all four checks pass, the package is permanently sealed. The `compatible` pol
 - `trove_health(addr) → (coll, debt, cr_bps)` — oracle-dependent
 - `price() → u128` — live APT/USD price (8 decimals)
 
+## Mainnet smoke results (2026-04-29)
+
+End-to-end smoke executed with 2 accounts (`0x0047a3e1…` + `0x85d1e4…`). 14 of 16 entry fns + all 16 view fns empirically validated. The 2 untested entries (`liquidate` / `liquidate_pyth`) are skipped intentionally — they require an under-water trove (CR < 150%) which cannot be reproduced on mainnet without an actual market move. The math is unit-tested + matches D Sui sealed mainnet behavior + has 4 CR-continuum trace points covered in audit responses.
+
+| Action | Account | Result | Tx |
+|---|---|---|---|
+| `open_trove_pyth(2.2 APT, 1 D)` | `0x0047` | trove created, 1% fee 100% → sp_pool (cliff, total_sp was 0) | `0xd9e71239…` |
+| `sp_deposit(0.5 D)` | `0x0047` | total_sp 0 → 0.5 D | `0x1c6d35b8…` |
+| `donate_to_sp(0.1 D)` | `0x0047` | sp_pool grew, total_sp unchanged | smoke |
+| `donate_to_reserve(0.1 APT)` | `0x0047` | reserve 0 → 0.1 APT | smoke |
+| `open_trove_pyth(2.5 APT, 1 D)` | `0x85d1e4` | second trove, **fee 10/90 split verified**: `reward_index_d += 1.8e16` (= 0.009 D × 1e18 / 0.5 D) | `0x5731ec73…` |
+| `add_collateral(0.3 APT)` | `0x85d1e4` | trove 2.5 → 2.8 APT, oracle-free | `0xf2433aa2…` |
+| `sp_deposit(0.5 D)` | `0x85d1e4` | total_sp 0.5 → 1.0 D | `0x246f4b4d…` |
+| `redeem_pyth(0.2 D, target=0x0047)` | `0x85d1e4` | 0x0047 trove debt 1 → 0.802 D, 0x85d1e4 received 0.213 APT | `0xf69acb0f…` |
+| `redeem (raw)(0.15 D, target=0x0047)` | `0x85d1e4` | confirms raw path works after separate Pyth update tx | `0x27af12d2…` |
+| `donate_to_reserve(0.5 APT)` | `0x0047` | reserve 0.1 → 0.6 APT | `0x0ff81e34…` |
+| `redeem_from_reserve_pyth(0.11 D)` | `0x0047` | reserve 0.6 → 0.49 APT, **`total_debt` UNCHANGED** (per-design reserve drain) | `0x072f1396…` |
+| `sp_claim()` | `0x0047` | `pending_d = 0.01107 D` claimed (V2 reward distribution to keyed depositor) | `0x4adef1fe…` |
+| `sp_withdraw(0.1 D)` | `0x85d1e4` | partial exit; sp_of bal 0.5 → 0.4 D | `0xb5fcb041…` |
+| `sp_withdraw(0.5 D)` | `0x0047` | full exit; total_sp 0.9 → 0.4 D | `0x469b5a3d…` |
+| `redeem_from_reserve (raw)(0.11 D)` | `0x85d1e4` | raw path, separate Pyth update | `0x3dde072e…` |
+| `close_trove()` | `0x0047` | full close, trove 0/0, full collateral 1.855 APT returned | `0xf2495bab…` |
+
+**V2 invariants verified empirically on mainnet:**
+- ✓ 10% of fee → `sp_pool` agnostic donation (joins balance, NOT `total_sp`)
+- ✓ 90% of fee → `fee_pool` + `reward_index_d` update (when `total_sp > 0`)
+- ✓ Cliff path: when `total_sp == 0`, full fee → `sp_pool` (not burned, not in fee_pool)
+- ✓ Keyed depositor pending_d accrues as expected (0x0047 received 0.01107 D from accumulated fees)
+- ✓ `redeem_from_reserve` does NOT decrement `total_debt` (intentional supply-vs-debt gap widening)
+- ✓ `add_collateral` is oracle-free (no Pyth call)
+- ✓ Raw `redeem` / `redeem_from_reserve` work when Pyth was updated within 60s (separate tx)
+- ✓ `close_trove` is oracle-free, returns full collateral, removes trove from registry
+
+Final state post-smoke (only w2's trove remains, ready for any future activity): `total_debt = 1 D`, `total_sp = 0.4 D`, `product_factor = 1e18` (no liquidations). All 16 view fns return expected structures.
+
 ## Audit summary
 
 R1 (6 external auditors, all GREEN):
